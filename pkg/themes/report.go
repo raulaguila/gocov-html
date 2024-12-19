@@ -21,19 +21,32 @@ import (
 // ReportOptions holds various options used when generating the final
 // HTML report.
 type ReportOptions struct {
-	// LowCoverageOnTop puts low coverage functions first.
-	LowCoverageOnTop bool
-	// Stylesheet is the path to a custom CSS file.
-	Stylesheet string
-	// CoverageMin filters out all functions whose code coverage is smaller than it is.
-	CoverageMin uint8
-	// CoverageMax filters out all functions whose code coverage is greater than it is.
-	CoverageMax uint8
+	SortOrder           SortOrder
+	Stylesheet          string
+	CoverageFunctionMin uint8
+	CoverageFunctionMax uint8
+	CoveragePackageMin  uint8
+	CoveragePackageMax  uint8
 }
 
 type report struct {
 	ReportOptions
 	packages []*gocov.Package
+}
+
+type SortOrder string
+
+const SortOrderHighCoverage SortOrder = "high-coverage"
+const SortOrderLowCoverage SortOrder = "low-coverage"
+const SortOrderLocation SortOrder = "location"
+
+func (so SortOrder) Valid() bool {
+	switch so {
+	case SortOrderHighCoverage, SortOrderLowCoverage, SortOrderLocation:
+		return true
+	default:
+		return false
+	}
 }
 
 func unmarshalJSON(data []byte) (packages []*gocov.Package, err error) {
@@ -43,14 +56,6 @@ func unmarshalJSON(data []byte) (packages []*gocov.Package, err error) {
 		packages = result.Packages
 	}
 	return
-}
-
-type reverse struct {
-	sort.Interface
-}
-
-func (r reverse) Less(i, j int) bool {
-	return r.Interface.Less(j, i)
 }
 
 // NewReport creates a new report.
@@ -92,16 +97,19 @@ func buildReportPackage(pkg *gocov.Package, r *report) reportPackage {
 		}
 		rf := reportFunction{Function: fn, StatementsReached: reached}
 		covp := rf.CoveragePercent()
-		if covp >= float64(r.CoverageMin) && covp <= float64(r.CoverageMax) {
+		if covp >= float64(r.CoverageFunctionMin) && covp <= float64(r.CoverageFunctionMax) {
 			rv.Functions = append(rv.Functions, rf)
 		}
 		rv.TotalStatements += len(fn.Statements)
 		rv.ReachedStatements += reached
 	}
-	if r.LowCoverageOnTop {
+	switch r.SortOrder {
+	case SortOrderHighCoverage:
 		sort.Sort(rv.Functions)
-	} else {
-		sort.Sort(reverse{rv.Functions})
+	case SortOrderLowCoverage:
+		sort.Sort(sort.Reverse(rv.Functions))
+	case SortOrderLocation:
+		sort.Sort(locationOrderedFunctionList(rv.Functions))
 	}
 	return rv
 }
@@ -128,7 +136,7 @@ func printReport(w io.Writer, r *report) error {
 		if err != nil {
 			return eris.Wrap(err, "print report")
 		}
-		style, err := ioutil.ReadAll(f)
+		style, err := io.ReadAll(f)
 		if err != nil {
 			return eris.Wrap(err, "read style")
 		}
@@ -189,7 +197,7 @@ func HTMLReportCoverage(r io.Reader, opts ReportOptions) error {
 	}
 	report.Stylesheet = stylesheet
 
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return eris.Wrap(err, "read coverage data")
 	}
@@ -200,16 +208,31 @@ func HTMLReportCoverage(r io.Reader, opts ReportOptions) error {
 	}
 
 	for _, pkg := range packages {
-		report.addPackage(pkg)
+		reachedStatements := 0
+		totalStatements := 0
+		for _, fn := range pkg.Functions {
+			reached := 0
+			for _, stmt := range fn.Statements {
+				if stmt.Reached > 0 {
+					reached++
+				}
+			}
+			reachedStatements += reached
+			totalStatements += len(fn.Statements)
+		}
+
+		stmtPercent := float64(reachedStatements) / float64(totalStatements) * 100
+
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("[%s] - reachedStatements: %v - totalStatements: %v - stmtPercent: %v\n", pkg.Name, reachedStatements, totalStatements, stmtPercent))
+		if stmtPercent >= float64(opts.CoveragePackageMin) && stmtPercent <= float64(opts.CoveragePackageMax) {
+			report.addPackage(pkg)
+		}
 	}
 	fmt.Println()
 	err = printReport(os.Stdout, report)
 	fmt.Fprintf(os.Stderr, "Took %v\n", time.Since(t0))
 	return eris.Wrap(err, "HTML report")
 }
-
-// ProjectURL is the project's site on GitHub.
-const ProjectURL = "https://github.com/matm/gocov-html"
 
 const (
 	hitPrefix  = "    "
@@ -327,10 +350,27 @@ func (f reportFunction) Lines() []functionLine {
 		fls[i] = functionLine{
 			Missed:     hitmiss == missPrefix,
 			LineNumber: lineno,
-			Code:       html.EscapeString(strings.Replace(line, "\t", "        ", -1)),
+			Code:       html.EscapeString(strings.Replace(line, "\t", "    ", -1)),
 		}
 	}
 	return fls
+}
+
+type locationOrderedFunctionList reportFunctionList
+
+func (l locationOrderedFunctionList) Len() int {
+	return len(l)
+}
+
+func (l locationOrderedFunctionList) Less(i, j int) bool {
+	if l[i].File == l[j].File {
+		return l[i].Start < l[j].Start
+	}
+	return l[i].File < l[j].File
+}
+
+func (l locationOrderedFunctionList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
 }
 
 // reportFunctionList is a list of functions for a report.
@@ -340,7 +380,6 @@ func (l reportFunctionList) Len() int {
 	return len(l)
 }
 
-// TODO make sort method configurable?
 func (l reportFunctionList) Less(i, j int) bool {
 	var left, right float64
 	if len(l[i].Statements) > 0 {

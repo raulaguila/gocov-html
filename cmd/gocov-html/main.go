@@ -1,23 +1,3 @@
-// Copyright (c) 2013-2022 Mathias Monnerville
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to
-// deal in the Software without restriction, including without limitation the
-// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-// sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-// IN THE SOFTWARE.
-
 package main
 
 import (
@@ -33,7 +13,6 @@ import (
 )
 
 func main() {
-	var r io.Reader
 	log.SetFlags(0)
 
 	css := flag.String("s", "", "path to custom CSS file")
@@ -42,17 +21,17 @@ func main() {
 	listThemes := flag.Bool("lt", false, "list available themes")
 	theme := flag.String("t", "golang", "theme to use for rendering")
 	reverseOrder := flag.Bool("r", false, "put lower coverage functions on top")
-	maxCoverage := flag.Uint64("cmax", 100, "only show functions whose coverage is greater than cmax")
-	minCoverage := flag.Uint64("cmin", 0, "only show functions whose coverage is smaller than cmin")
+	sortOrder := flag.String("sort", "high-coverage", "sort functions by high-coverage, low-coverage or location")
+	maxFunctionCoverage := flag.Uint64("fmax", 100, "only show functions whose coverage is greater than fmax")
+	minFunctionCoverage := flag.Uint64("fmin", 0, "only show functions whose coverage is smaller than fmin")
+	maxPackageCoverage := flag.Uint64("pmax", 100, "only show packages whose coverage is greater than pmax")
+	minPackageCoverage := flag.Uint64("pmin", 0, "only show packages whose coverage is smaller than pmin")
 
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("Version:      %s\n", config.Version)
-		fmt.Printf("Git revision: %s\n", config.GitRev)
-		fmt.Printf("Git branch:   %s\n", config.GitBranch)
+		fmt.Printf("Gocov-HTML Version:      %s\n", config.Version)
 		fmt.Printf("Go version:   %s\n", runtime.Version())
-		fmt.Printf("Built:        %s\n", config.BuildDate)
 		fmt.Printf("OS/Arch:      %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		return
 	}
@@ -64,16 +43,24 @@ func main() {
 		return
 	}
 
-	if *minCoverage > *maxCoverage {
+	if *minFunctionCoverage > *maxFunctionCoverage {
 		log.Fatal("error: empty report if cmin > cmax, please use a smaller cmin value.")
 	}
-	if *maxCoverage > 100 {
-		*maxCoverage = 100
+	if *maxFunctionCoverage > 100 {
+		*maxFunctionCoverage = 100
+	}
+	if *minFunctionCoverage < 0 {
+		*minFunctionCoverage = 0
+	}
+	if *maxPackageCoverage > 100 {
+		*maxPackageCoverage = 100
+	}
+	if *minPackageCoverage < 0 {
+		*minPackageCoverage = 0
 	}
 
-	err := themes.Use(*theme)
-	if err != nil {
-		log.Fatalf("theme selection: %v", err)
+	if err := themes.Use(*theme); err != nil {
+		log.Fatalf("Theme selection: %v", err)
 	}
 
 	if *showDefaultCSS {
@@ -81,6 +68,7 @@ func main() {
 		return
 	}
 
+	var r io.Reader
 	switch flag.NArg() {
 	case 0:
 		r = os.Stdin
@@ -93,11 +81,22 @@ func main() {
 		log.Fatalf("Usage: %s data.json\n", os.Args[0])
 	}
 
+	var sortOrderOpt = themes.SortOrder(*sortOrder)
+	if !sortOrderOpt.Valid() {
+		log.Fatalf("Invalid sort order: %q\n", sortOrderOpt)
+	}
+
+	if *reverseOrder {
+		sortOrderOpt = themes.SortOrderLowCoverage
+	}
+
 	opts := themes.ReportOptions{
-		LowCoverageOnTop: *reverseOrder,
-		Stylesheet:       *css,
-		CoverageMin:      uint8(*minCoverage),
-		CoverageMax:      uint8(*maxCoverage),
+		SortOrder:           sortOrderOpt,
+		Stylesheet:          *css,
+		CoverageFunctionMin: uint8(*minFunctionCoverage),
+		CoverageFunctionMax: uint8(*maxFunctionCoverage),
+		CoveragePackageMin:  uint8(*minPackageCoverage),
+		CoveragePackageMax:  uint8(*maxPackageCoverage),
 	}
 	if err := themes.HTMLReportCoverage(r, opts); err != nil {
 		log.Fatal(err)

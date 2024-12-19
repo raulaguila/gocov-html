@@ -1,9 +1,8 @@
 package themes
 
 import (
+	"fmt"
 	"text/template"
-
-	"github.com/rotisserie/eris"
 )
 
 // Beautifier defines a theme used for rendering the HTML coverage stats.
@@ -37,8 +36,6 @@ type templateData struct {
 	Overview *reportPackage
 	// Packages is the list of all Go Packages analysed.
 	Packages reportPackageList
-	// ProjectURL is the project's site on GitHub.
-	ProjectURL string
 }
 
 // StaticAssets sets all assets required for a theme.
@@ -74,11 +71,10 @@ func Get(name string) Beautifier {
 // Use takes the name of the theme that will be used for rendering.
 // Returns an error for an unknown theme.
 func Use(name string) error {
-	p := Get(name)
-	if p == nil {
-		return eris.Errorf("unknown theme %q", name)
+	curTheme = Get(name)
+	if curTheme == nil {
+		return fmt.Errorf("unknown theme %q", name)
 	}
-	curTheme = p
 	return nil
 }
 

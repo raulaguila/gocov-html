@@ -30,7 +30,6 @@ import (
 func (t {{.Type}}) Data() *templateData {
 	td:= &templateData{
 		When:       time.Now().Format(time.RFC1123),
-		ProjectURL: ProjectURL,
 	}
 	{{if .Style}}
 	td.Style = "{{.Style}}"
