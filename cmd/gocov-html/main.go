@@ -8,8 +8,8 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/matm/gocov-html/pkg/config"
-	"github.com/matm/gocov-html/pkg/themes"
+	"github.com/raulaguila/gocov-html/pkg/config"
+	"github.com/raulaguila/gocov-html/pkg/themes"
 )
 
 func main() {

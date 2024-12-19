@@ -6,12 +6,12 @@ This is a simple helper tool for generating HTML output from [axw/gocov](https:/
 
 ## Installation
 
-Binaries for most amd64 systems are built for every release. Please just [grab a binary version of the latest release](https://github.com/matm/gocov-html/releases).
+Binaries for most amd64 systems are built for every release. Please just [grab a binary version of the latest release](https://github.com/raulaguila/gocov-html/releases).
 
 You can also build it from source. In this case, a working Go 1.11+ compiler is required:
 
 ```bash
-$ go install github.com/matm/gocov-html/cmd/gocov-html@latest
+$ go install github.com/raulaguila/gocov-html/cmd/gocov-html@latest
 ```
 
 A [Dockerfile](Dockerfile) is also provided.
